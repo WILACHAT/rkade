@@ -132,14 +132,24 @@ class SpinningWheelGame extends FlameGame with TapDetector {
 // ---------------------------------------------------------------------------
 @override
 void onTap() {
-  // If the last round ended, a single tap should ONLY restart the game.
+  // ─── 1. Restart if we just lost ───────────────────────────────────────────
   if (gameOver) {
     _resetGame();
-    return;               // ← don’t let this same tap do anything else
+    return;
   }
 
-  // -------- Normal in-game tap processing -----------------------------------
-  if (needleIndex.round() % slots == targetIndex) {
+  // ─── 2. Overlap-based hit detection ───────────────────────────────────────
+  // Get the target window component
+  final targetWindow = windows[targetIndex];
+
+  // Compute centre-to-centre distance
+  final distance = needle.position.distanceTo(targetWindow.position);
+
+  // Do the circles overlap?  (optionally add a few px of leniency)
+  const double leniency = 0;          // set to e.g. 4 for a wider hit window
+  final bool isHit = distance <= (needleRadius + windowRadius + leniency);
+
+  if (isHit) {
     // ---- Hit! --------------------------------------------------------------
     score += 1;
     needle.paint.color = Colors.green;
@@ -148,16 +158,17 @@ void onTap() {
     });
 
     speed += 0.7;
-    if (score % 3 == 0 && score != lastDirectionFlipScore) {
+    if (score % 2 == 0 && score != lastDirectionFlipScore) {
       if (Random().nextBool()) speed = -speed;
       lastDirectionFlipScore = score;
     }
     _chooseNewTarget();
   } else {
-    // ---- Miss --------------------------------------------------------------
+    // ---- Miss (no overlap) --------------------------------------------------
     _triggerGameOver();
   }
 }
+
 
 
   void _triggerGameOver() {
