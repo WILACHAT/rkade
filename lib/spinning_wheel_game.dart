@@ -77,17 +77,39 @@ class SpinningWheelGame extends FlameGame with TapDetector {
   }
 
   // Choose a new green target window not equal to current target
-  void _chooseNewTarget() {
-    // reset previous target colour
-    windows[targetIndex].paint.color = Colors.grey.shade800;
+// ─────────────────────────────────────────────────────────────────────────────
+// Choose a target within ±6 slots (90°) of the current one.
+// If that offset is counter to the current spin, flip the direction sign.
+// ─────────────────────────────────────────────────────────────────────────────
+void _chooseNewTarget() {
+  // restore old window colour
+  windows[targetIndex].paint.color = Colors.grey.shade800;
 
-    int newIndex;
-    do {
-      newIndex = Random().nextInt(slots);
-    } while (newIndex == targetIndex);
-    targetIndex = newIndex;
-    windows[targetIndex].paint.color = Colors.green;
+  const int maxOffset = 8;                 // 6 slots  =  90°
+  final rng = Random();
+
+  // Pick an offset in  [-6 … -1] ∪ [1 … 6]
+  int offset = rng.nextInt(maxOffset * 2) - maxOffset; // [-6 … +5]
+  if (offset >= 0) offset += 1;                        // skip 0 → [-6 … -1] ∪ [1 … 6]
+
+  // Compute the new index (wrap 0-23)
+  final int newIndex = (targetIndex + offset) % slots;
+  targetIndex = (newIndex + slots) % slots;            // ensure positive
+
+  // Colour the new target
+  windows[targetIndex].paint.color = Colors.green;
+
+  // ─── Direction logic: does the offset match current spin? ────────────────
+  //   • clockwise spin  (speed > 0) expects   offset > 0
+  //   • counter-clock   (speed < 0) expects   offset < 0
+  final bool spinMatchesOffset =
+    (speed < 0 && offset < 0) || (speed > 0 && offset > 0);
+
+  if (!spinMatchesOffset) {
+    speed = -speed; // flip sign, keep magnitude
   }
+}
+
 
   // ---------------------------------------------------------------------------
   @override
@@ -132,39 +154,44 @@ class SpinningWheelGame extends FlameGame with TapDetector {
 // ---------------------------------------------------------------------------
 @override
 void onTap() {
-  // ─── 1. Restart if we just lost ───────────────────────────────────────────
+  // 1. restart if game over
   if (gameOver) {
     _resetGame();
     return;
   }
 
-  // ─── 2. Overlap-based hit detection ───────────────────────────────────────
-  // Get the target window component
+  // 2. detect overlap-hit (unchanged)
   final targetWindow = windows[targetIndex];
-
-  // Compute centre-to-centre distance
   final distance = needle.position.distanceTo(targetWindow.position);
-
-  // Do the circles overlap?  (optionally add a few px of leniency)
-  const double leniency = 0;          // set to e.g. 4 for a wider hit window
-  final bool isHit = distance <= (needleRadius + windowRadius + leniency);
+  const leniency = 0.0; // keep or adjust as you like
+  final isHit = distance <= (needleRadius + windowRadius + leniency);
 
   if (isHit) {
     // ---- Hit! --------------------------------------------------------------
     score += 1;
+
+    // --------------- NEW SPEED LOGIC ----------------------------------------
+    //  • always grow magnitude by 0.7
+    //  • maybe flip sign without shrinking magnitude
+    final double newMagnitude = speed.abs() + 0.7;
+
+    bool flipDirection = false;
+
+    // keep or flip sign
+    final int currentSign = speed.isNegative ? -1 : 1;
+    final int nextSign = flipDirection ? -currentSign : currentSign;
+    speed = newMagnitude * nextSign;
+    // -----------------------------------------------------------------------
+
+    // small visual feedback
     needle.paint.color = Colors.green;
     Future.delayed(const Duration(milliseconds: 120), () {
       needle.paint.color = Colors.red;
     });
 
-    speed += 0.7;
-    if (score % 2 == 0 && score != lastDirectionFlipScore) {
-      if (Random().nextBool()) speed = -speed;
-      lastDirectionFlipScore = score;
-    }
     _chooseNewTarget();
   } else {
-    // ---- Miss (no overlap) --------------------------------------------------
+    // ---- Miss --------------------------------------------------------------
     _triggerGameOver();
   }
 }
