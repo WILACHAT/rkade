@@ -125,54 +125,66 @@ class SpinningWheelGame extends FlameGame with TapDetector {
   }
 
   // ---------------------------------------------------------------------------
-  @override
-  void onTap() {
-    if (gameOver) return;
 
-    if (needleIndex.round() % slots == targetIndex) {
-      // ---- Hit! --------------------------------------------------------------
-      score += 1;
 
-      // small visual feedback
-      needle.paint.color = Colors.green;
-      Future.delayed(const Duration(milliseconds: 120), () {
-        needle.paint.color = Colors.red;
-      });
-
-      // speed up & maybe flip direction every 3 points
-      speed += 0.7;
-      if (score % 3 == 0 && score != lastDirectionFlipScore) {
-        if (Random().nextBool()) speed = -speed;
-        lastDirectionFlipScore = score;
-      }
-
-      _chooseNewTarget();
-    } else {
-      // ---- Miss --------------------------------------------------------------
-      _triggerGameOver();
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// KEEP onTap(), but ensure it never runs when the game is over.
+// ---------------------------------------------------------------------------
+@override
+void onTap() {
+  // If the last round ended, a single tap should ONLY restart the game.
+  if (gameOver) {
+    _resetGame();
+    return;               // ← don’t let this same tap do anything else
   }
+
+  // -------- Normal in-game tap processing -----------------------------------
+  if (needleIndex.round() % slots == targetIndex) {
+    // ---- Hit! --------------------------------------------------------------
+    score += 1;
+    needle.paint.color = Colors.green;
+    Future.delayed(const Duration(milliseconds: 120), () {
+      needle.paint.color = Colors.red;
+    });
+
+    speed += 0.7;
+    if (score % 3 == 0 && score != lastDirectionFlipScore) {
+      if (Random().nextBool()) speed = -speed;
+      lastDirectionFlipScore = score;
+    }
+    _chooseNewTarget();
+  } else {
+    // ---- Miss --------------------------------------------------------------
+    _triggerGameOver();
+  }
+}
+
 
   void _triggerGameOver() {
     gameOver = true;
     needle.paint.color = Colors.red.withOpacity(0.4);
   }
 
-  @override
-  void onTapUp(TapUpInfo info) {
-    if (gameOver) _resetGame();
+ 
+  void _resetGame() {
+  // 1. clear all window colours
+  for (final win in windows) {
+    win.paint.color = Colors.grey.shade800;
   }
 
-  void _resetGame() {
-    // reset all state
-    for (final win in windows) {
-      win.paint.color = Colors.grey.shade800;
-    }
-    score = 0;
-    needleIndex = 0;
-    speed = 4.0;
-    gameOver = false;
-    needle.paint.color = Colors.red;
-    _chooseNewTarget();
-  }
+  // 2. reset state
+  score = 0;
+  needleIndex = 0;
+  speed = 4.0;
+  lastDirectionFlipScore = -1;
+  gameOver = false;
+
+  // 3. restore needle visuals & position
+  needle.paint.color = Colors.red;
+  final angle = 0.0; // since needleIndex == 0
+  needle.position = center + Vector2(cos(angle), sin(angle)) * ringRadius;
+
+  // 4. choose a fresh target
+  _chooseNewTarget();
+}
 }
