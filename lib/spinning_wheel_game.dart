@@ -15,7 +15,7 @@ class SpinningWheelGame extends FlameGame with TapDetector {
   static const double ringRadius   = 180;
   static const double targetRadius = 20;
   static const double needleWidth  = 12;
-  static const double needleLength = 48;
+  static const double needleLength = 180;
 
   // ───── Components ─────────────────────────────────────────────────────────
   late CircleComponent    ring;
@@ -66,6 +66,12 @@ class SpinningWheelGame extends FlameGame with TapDetector {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setInt(_hsKey, value);
 }
+/// World-space position of the very tip of the needle
+Vector2 _needleTip() {
+  final double ang = 2 * pi * needleIndex / slots;
+  return center + Vector2(cos(ang), sin(ang)) * needleLength;
+}
+
 
 
   // ───── Component builders ────────────────────────────────────────────────
@@ -86,7 +92,7 @@ class SpinningWheelGame extends FlameGame with TapDetector {
     needle = RectangleComponent(
       size: Vector2(needleWidth, needleLength),
       paint: Paint()..color = const Color(0xFFFF77FF),
-      anchor: Anchor.center,
+      anchor: Anchor.topCenter,
     );
     add(needle);
   }
@@ -144,8 +150,9 @@ void update(double dt) {
   needle.angle    = angle + pi / 2;
 
   // overlap check
-  final dist      = needle.position.distanceTo(target.position);
-  final bool nowOver = dist <= (needleLength / 2 + targetRadius);
+final dist    = _needleTip().distanceTo(target.position);
+final bool nowOver = dist <= targetRadius;   // hit when tip touches dot
+
 
   // left the dot → tentative miss
   if (overlapping && !nowOver) {
