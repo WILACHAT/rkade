@@ -5,6 +5,8 @@ import 'package:flame/game.dart';
 import 'package:flame/input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 
 class SpinningWheelGame extends FlameGame with TapDetector {
@@ -28,7 +30,9 @@ class SpinningWheelGame extends FlameGame with TapDetector {
   double prevNeedleIndex = 0;         // track previous frame’s slot
   double speed       = 5.0;
   static const double baseSpeed  = 5.0;   // starting magnitude
-static const double speedStep  = 0.7;   // linear step size
+  static const double speedStep  = 0.7; 
+  int highScore = 0;                       // saved best score
+  static const _hsKey = 'high_spinwheel';  // linear step size
 
   int    score       = 0;
   bool   gameOver    = false;
@@ -41,6 +45,10 @@ static const double speedStep  = 0.7;   // linear step size
   // ───── Lifecycle ──────────────────────────────────────────────────────────
   @override
   Future<void> onLoad() async {
+      await super.onLoad();                    // keep Flame happy
+
+     final prefs = await SharedPreferences.getInstance();
+  highScore   = prefs.getInt(_hsKey) ?? 0;
     scoreText = TextPaint(
       style: const TextStyle(
         fontSize: 32,
@@ -48,12 +56,17 @@ static const double speedStep  = 0.7;   // linear step size
         fontWeight: FontWeight.bold,
       ),
     );
-    center = size / 2;
-
+      const double shiftUp = 50;                       // ← tune this
+      center = Vector2(size.x / 2, size.y / 2 - shiftUp);
     _createRing();
     _createNeedle();
     _createTarget();   // also chooses first target
   }
+  Future<void> _saveHighScore(int value) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setInt(_hsKey, value);
+}
+
 
   // ───── Component builders ────────────────────────────────────────────────
   void _createRing() {
@@ -196,7 +209,8 @@ void onTap() {
     HapticFeedback.lightImpact();
     Future.delayed(const Duration(milliseconds: 40), () {
       HapticFeedback.mediumImpact();
-    });  
+    }); 
+
     final double newMag = _speedMagnitudeForScore(score);
     final double sign   = speed.isNegative ? -1 : 1;
     speed = sign * newMag;
@@ -220,6 +234,9 @@ void onTap() {
     super.render(canvas);
     scoreText.render(
         canvas, 'Score: $score', Vector2(size.x / 2, 50), anchor: Anchor.center);
+        scoreText.render(canvas, 'Best: $highScore',
+    Vector2(size.x / 2, 90), anchor: Anchor.center);
+
 
     if (gameOver) {
       scoreText.render(
@@ -229,6 +246,10 @@ void onTap() {
 
   // ───── Helpers ───────────────────────────────────────────────────────────
   void _triggerGameOver() {
+        if (score > highScore) {
+  highScore = score;            // new record!
+  _saveHighScore(highScore);    // persist it
+} 
     HapticFeedback.vibrate();
   
     gameOver = true;
