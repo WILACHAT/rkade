@@ -1,4 +1,4 @@
-// circle_tap_game.dart  ──  Single-circle reaction game (Flame 1.17.x)
+// circle_tap_game.dart  ──  8-circle reaction game, 4 rows × 2 cols  (Flame 1.17.x)
 
 import 'dart:math';
 import 'package:flame/components.dart';
@@ -21,36 +21,32 @@ class TapCircle extends CircleComponent {
 
   void setGreen() {
     isGreen = true;
-    paint
-      ..color = Colors.green
-      ..style = PaintingStyle.fill
-      ..strokeWidth = 0;
+    paint..color = Colors.green..style = PaintingStyle.fill..strokeWidth = 0;
   }
 
   void setRed() {
     isGreen = false;
-    paint
-      ..color = Colors.red
-      ..style = PaintingStyle.fill
-      ..strokeWidth = 0;
+    paint..color = Colors.red..style = PaintingStyle.fill..strokeWidth = 0;
   }
 }
 
-class SingleCircleGame extends FlameGame with TapDetector {
+class FourCircleGame extends FlameGame with TapDetector {
   // ── CONFIG ──────────────────────────────────────────────
-  static const double r = 60;        // circle radius
-  static const spawnPeriod   = 2.0;  // seconds between green flashes
-  static const greenLifetime = 1.2;  // how long it stays green
-  static const _hsKey = 'high_single_circle';
+  static const double r = 34;     // radius of each circle
+  static const double hGap = 30;  // horizontal gap between centres
+  static const double vGap = 40;  // vertical   gap between centres
+  static const spawnPeriod   = 1.6;
+  static const greenLifetime = 1.1;
+  static const _hsKey = 'high_four_circle';
 
   // ── STATE ───────────────────────────────────────────────
-  late TapCircle circle;
+  late List<TapCircle> circles;
   late TimerComponent spawnTimer;
   late TextComponent scoreLabel, bestLabel;
-
   int score = 0;
   int highScore = 0;
   bool gameOver = false;
+  final rng = Random();
 
   @override
   Color backgroundColor() => const Color(0xFF222244);
@@ -62,33 +58,46 @@ class SingleCircleGame extends FlameGame with TapDetector {
     highScore =
         (await SharedPreferences.getInstance()).getInt(_hsKey) ?? 0;
 
-    // wait a frame so size is available
-    await Future.delayed(Duration.zero);
-
-    _buildCircle();
+    await Future.delayed(Duration.zero);   // ensure size is ready
+    _buildCircles();
     _buildLabels();
     _startSpawner();
   }
 
-  void _buildCircle() {
-    circle = TapCircle(size / 2, r);
-    add(circle);
+  // ── BUILD 8 CIRCLES (4 rows × 2 columns) ────────────────
+  void _buildCircles() {
+    final Vector2 centre = size / 2;
+    const rows = 4;
+    const cols = 2;
+    final List<double> colOffsets =
+        List<double>.generate(cols, (i) => (i - 0.5) * (2 * r + hGap));
+    final List<double> rowOffsets =
+        List<double>.generate(rows, (j) => (j - 1.5) * (2 * r + vGap));
+
+    circles = [];
+    for (final y in rowOffsets) {
+      for (final x in colOffsets) {
+        circles.add(TapCircle(centre + Vector2(x, y), r));
+      }
+    }
+    addAll(circles);
   }
 
+  // ── LABELS ──────────────────────────────────────────────
   void _buildLabels() {
     scoreLabel = TextComponent(
       text: 'Score: 0',
       anchor: Anchor.topCenter,
       position: Vector2(size.x / 2, 20),
-      textRenderer: TextPaint(
-          style: const TextStyle(fontSize: 22, color: Colors.white)),
+      textRenderer:
+          TextPaint(style: const TextStyle(fontSize: 22, color: Colors.white)),
     );
     bestLabel = TextComponent(
       text: 'Best: $highScore',
       anchor: Anchor.topCenter,
       position: Vector2(size.x / 2, 48),
-      textRenderer: TextPaint(
-          style: const TextStyle(fontSize: 18, color: Colors.grey)),
+      textRenderer:
+          TextPaint(style: const TextStyle(fontSize: 18, color: Colors.grey)),
     );
     addAll([scoreLabel, bestLabel]);
   }
@@ -100,15 +109,18 @@ class SingleCircleGame extends FlameGame with TapDetector {
       repeat: true,
       onTick: () {
         if (gameOver) return;
-        if (circle.isGreen) return; // already green → skip
-        circle.setGreen();
 
-        // schedule the return to red after greenLifetime
+        final redChoices = circles.where((c) => !c.isGreen).toList();
+        if (redChoices.isEmpty) return;
+
+        final TapCircle chosen = redChoices[rng.nextInt(redChoices.length)];
+        chosen.setGreen();
+
         add(TimerComponent(
           period: greenLifetime,
           removeOnFinish: true,
           onTick: () {
-            if (!gameOver) circle.setRed();
+            if (!gameOver && chosen.isGreen) chosen.setRed();
           },
         ));
       },
@@ -117,42 +129,41 @@ class SingleCircleGame extends FlameGame with TapDetector {
   }
 
   // ── INPUT ───────────────────────────────────────────────
-@override
-void onTapDown(TapDownInfo info) {
-  if (gameOver) {
-    _reset();
-    return;
-  }
+  @override
+  void onTapDown(TapDownInfo info) {
+    if (gameOver) {
+      _reset();
+      return;
+    }
 
-  // use coordinates relative to the GameWidget, not the whole screen
-  final Vector2 tapPos = Vector2(
-    info.eventPosition.widget.x,
-    info.eventPosition.widget.y,
-  );
+    final Vector2 tapPos =
+        Vector2(info.eventPosition.widget.x, info.eventPosition.widget.y);
 
-  if (tapPos.distanceTo(circle.position) <= circle.radius) {
-    if (circle.isGreen) {
-      circle.setRed();
-      score++;
-      scoreLabel.text = 'Score: $score';
+    for (final c in circles) {
+      if (tapPos.distanceTo(c.position) <= c.radius) {
+        if (c.isGreen) {
+          c.setRed();
+          score++;
+          scoreLabel.text = 'Score: $score';
 
-      if (score > highScore) {
-        highScore = score;
-        bestLabel.text = 'Best: $highScore';
-        SharedPreferences.getInstance()
-            .then((p) => p.setInt(_hsKey, highScore));
+          if (score > highScore) {
+            highScore = score;
+            bestLabel.text = 'Best: $highScore';
+            SharedPreferences.getInstance()
+                .then((p) => p.setInt(_hsKey, highScore));
+          }
+        } else {
+          _gameOver();
+        }
+        break;
       }
-    } else {
-      _gameOver();
     }
   }
-}
-
 
   // ── GAME-OVER / RESET ──────────────────────────────────
   void _gameOver() {
     gameOver = true;
-    circle.setRed();
+    circles.forEach((c) => c.setRed());
     spawnTimer.timer.stop();
 
     add(TextComponent(
@@ -169,32 +180,32 @@ void onTapDown(TapDownInfo info) {
     scoreLabel.text = 'Score: 0';
     gameOver = false;
 
-    // remove “Game Over” text components
     children
-        .where((e) => e is TextComponent && e != scoreLabel && e != bestLabel)
+        .where((e) =>
+            e is TextComponent && e != scoreLabel && e != bestLabel)
         .toList()
         .forEach(remove);
 
-    circle.setRed();
+    circles.forEach((c) => c.setRed());
     spawnTimer.timer.start();
   }
 }
 
 // ── FLUTTER SCREEN WRAPPER ───────────────────────────────
-class GameScreenSingleCircle extends StatelessWidget {
-  const GameScreenSingleCircle({super.key});
+class GameScreenFourCircle extends StatelessWidget {
+  const GameScreenFourCircle({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Single Circle Tap'),
+        title: const Text('Four Circle Tap'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: GameWidget(game: SingleCircleGame()),
+      body: GameWidget(game: FourCircleGame()),
     );
   }
 }
