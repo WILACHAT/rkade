@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'game_screen_spinning_wheel.dart';
 import 'game_screen_circle_tap.dart';
+import 'lucky_or_lose.dart'; // 👈 Import your new game screen
 
 class GameMenuScreen extends StatelessWidget {
   const GameMenuScreen({super.key});
@@ -31,6 +32,11 @@ class GameMenuScreen extends StatelessWidget {
                   context,
                   title: 'Circle Tap',
                   screen: const GameScreenFourCircle(),
+                ),
+                _buildGameCard(
+                  context,
+                  title: 'Lucky or Lose',
+                  screen: const GameScreenLuckyOrLose(), // 👈 Update with correct widget class name
                 ),
               ],
             ),

@@ -32,7 +32,7 @@ class TapCircle extends CircleComponent {
   }
 }
 
-class FourCircleGame extends FlameGame with TapDetector {
+class FourCircleGame extends FlameGame with MultiTouchTapDetector {
   // ── CONFIG ──────────────────────────────────────────────
   static const double r      = 32;
   static const double hGap   = 26;
@@ -55,8 +55,8 @@ class FourCircleGame extends FlameGame with TapDetector {
 
   // ── UTILITY: current max greens based on score ──────────
   int get currentMaxGreens {
-    if (score >= 30) return 4;
-    if (score >= 20) return 3;
+    if (score >= 60) return 4;
+    if (score >= 30) return 3;
     if (score >= 10) return 2;
     return 1;
   }
@@ -84,7 +84,7 @@ class FourCircleGame extends FlameGame with TapDetector {
         List<double>.generate(cols, (i) => (i - 1.5) * (2 * r + hGap));
 final rowOffsets = List<double>.generate(
   rows,
-  (j) => (j - 2.5) * (2 * r + vGap) + 140, // 👈 shift down by 40 pixels
+  (j) => (j - 2.5) * (2 * r + vGap) + 180, // 👈 shift down by 40 pixels
 );
 
     circles = [];
@@ -124,41 +124,42 @@ void _startSpawner() {
     onTick: () {
       if (gameOver) return;
 
-      // # of greens visible right now
-      final activeGreens = circles.where((c) => c.isGreen).length;
-      if (activeGreens >= currentMaxGreens) return;
+      // Keep spawning until we reach the allowed max
+      while (circles.where((c) => c.isGreen).length < currentMaxGreens) {
+        // find red choices
+        final redChoices = circles.where((c) => !c.isGreen).toList();
+        if (redChoices.isEmpty) break;          // all green already
 
-      // pick a red circle
-      final redChoices = circles.where((c) => !c.isGreen).toList();
-      if (redChoices.isEmpty) return;
+        final chosen = redChoices[rng.nextInt(redChoices.length)];
+        chosen.setGreen();
 
-      final chosen = redChoices[rng.nextInt(redChoices.length)];
-      chosen.setGreen();
+        // schedule the revert + optional score penalty
+        add(TimerComponent(
+          period: greenLifetime,
+          removeOnFinish: true,
+          onTick: () {
+            if (!gameOver && chosen.isGreen) {
+              chosen.setRed();
+              if (score > 0) {
+                score--;
+                scoreLabel.text = 'Score: $score';
+                HapticFeedback.heavyImpact();
 
-      // schedule it to revert to red – and DEDUCT a point if missed
-      add(TimerComponent(
-        period: greenLifetime,
-        removeOnFinish: true,
-        onTick: () {
-          if (!gameOver && chosen.isGreen) {
-            chosen.setRed();
-            // ↓↓↓ deduct a point, but never go below 0
-            if (score > 0) {
-              score--;
-              scoreLabel.text = 'Score: $score';
+              }
             }
-          }
-        },
-      ));
+          },
+        ));
+      }
     },
   );
   add(spawnTimer);
 }
 
 
+
   // ── INPUT ───────────────────────────────────────────────
   @override
-  void onTapDown(TapDownInfo info) {
+  void onTapDown(int pointerId, TapDownInfo info) {
     if (gameOver) {
       _reset();
       return;
