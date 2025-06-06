@@ -1,4 +1,4 @@
-// circle_tap_game.dart  ──  8-circle reaction game, 4 rows × 2 cols  (Flame 1.17.x)
+// circle_tap_game.dart ── 24-circle game w/ dynamic max greens (Flame 1.17.x)
 
 import 'dart:math';
 import 'package:flame/components.dart';
@@ -32,24 +32,32 @@ class TapCircle extends CircleComponent {
 
 class FourCircleGame extends FlameGame with TapDetector {
   // ── CONFIG ──────────────────────────────────────────────
-  static const double r = 34;     // radius of each circle
-  static const double hGap = 30;  // horizontal gap between centres
-  static const double vGap = 40;  // vertical   gap between centres
-  static const spawnPeriod   = 1.6;
-  static const greenLifetime = 1.1;
-  static const _hsKey = 'high_four_circle';
+  static const double r      = 26;
+  static const double hGap   = 26;
+  static const double vGap   = 30;
+  static const spawnPeriod   = 1.4;
+  static const greenLifetime = 1.0;
+  static const _hsKey        = 'high_four_circle';
 
   // ── STATE ───────────────────────────────────────────────
   late List<TapCircle> circles;
   late TimerComponent spawnTimer;
   late TextComponent scoreLabel, bestLabel;
-  int score = 0;
-  int highScore = 0;
-  bool gameOver = false;
-  final rng = Random();
+  int score      = 0;
+  int highScore  = 0;
+  bool gameOver  = false;
+  final rng      = Random();
 
   @override
   Color backgroundColor() => const Color(0xFF222244);
+
+  // ── UTILITY: current max greens based on score ──────────
+  int get currentMaxGreens {
+    if (score >= 30) return 4;
+    if (score >= 20) return 3;
+    if (score >= 10) return 2;
+    return 1;
+  }
 
   // ── LIFECYCLE ───────────────────────────────────────────
   @override
@@ -58,21 +66,22 @@ class FourCircleGame extends FlameGame with TapDetector {
     highScore =
         (await SharedPreferences.getInstance()).getInt(_hsKey) ?? 0;
 
-    await Future.delayed(Duration.zero);   // ensure size is ready
+    await Future.delayed(Duration.zero);
     _buildCircles();
     _buildLabels();
     _startSpawner();
   }
 
-  // ── BUILD 8 CIRCLES (4 rows × 2 columns) ────────────────
+  // ── BUILD 24 CIRCLES (6 × 4) ────────────────────────────
   void _buildCircles() {
     final Vector2 centre = size / 2;
-    const rows = 4;
-    const cols = 2;
-    final List<double> colOffsets =
-        List<double>.generate(cols, (i) => (i - 0.5) * (2 * r + hGap));
-    final List<double> rowOffsets =
-        List<double>.generate(rows, (j) => (j - 1.5) * (2 * r + vGap));
+    const rows = 6;
+    const cols = 4;
+
+    final colOffsets =
+        List<double>.generate(cols, (i) => (i - 1.5) * (2 * r + hGap));
+    final rowOffsets =
+        List<double>.generate(rows, (j) => (j - 2.5) * (2 * r + vGap));
 
     circles = [];
     for (final y in rowOffsets) {
@@ -88,21 +97,21 @@ class FourCircleGame extends FlameGame with TapDetector {
     scoreLabel = TextComponent(
       text: 'Score: 0',
       anchor: Anchor.topCenter,
-      position: Vector2(size.x / 2, 20),
+      position: Vector2(size.x / 2, 18),
       textRenderer:
-          TextPaint(style: const TextStyle(fontSize: 22, color: Colors.white)),
+          TextPaint(style: const TextStyle(fontSize: 20, color: Colors.white)),
     );
     bestLabel = TextComponent(
       text: 'Best: $highScore',
       anchor: Anchor.topCenter,
-      position: Vector2(size.x / 2, 48),
+      position: Vector2(size.x / 2, 42),
       textRenderer:
-          TextPaint(style: const TextStyle(fontSize: 18, color: Colors.grey)),
+          TextPaint(style: const TextStyle(fontSize: 16, color: Colors.grey)),
     );
     addAll([scoreLabel, bestLabel]);
   }
 
-  // ── SPAWNER ─────────────────────────────────────────────
+  // ── SPAWNER (now obeys currentMaxGreens) ────────────────
   void _startSpawner() {
     spawnTimer = TimerComponent(
       period: spawnPeriod,
@@ -110,12 +119,20 @@ class FourCircleGame extends FlameGame with TapDetector {
       onTick: () {
         if (gameOver) return;
 
+        // How many greens are currently visible?
+        final activeGreens =
+            circles.where((c) => c.isGreen).length;
+
+        if (activeGreens >= currentMaxGreens) return;
+
+        // Pick a red circle and turn it green
         final redChoices = circles.where((c) => !c.isGreen).toList();
         if (redChoices.isEmpty) return;
 
-        final TapCircle chosen = redChoices[rng.nextInt(redChoices.length)];
+        final chosen = redChoices[rng.nextInt(redChoices.length)];
         chosen.setGreen();
 
+        // Schedule it to revert to red
         add(TimerComponent(
           period: greenLifetime,
           removeOnFinish: true,
@@ -136,8 +153,10 @@ class FourCircleGame extends FlameGame with TapDetector {
       return;
     }
 
-    final Vector2 tapPos =
-        Vector2(info.eventPosition.widget.x, info.eventPosition.widget.y);
+    final tapPos = Vector2(
+      info.eventPosition.widget.x,
+      info.eventPosition.widget.y,
+    );
 
     for (final c in circles) {
       if (tapPos.distanceTo(c.position) <= c.radius) {
@@ -160,7 +179,7 @@ class FourCircleGame extends FlameGame with TapDetector {
     }
   }
 
-  // ── GAME-OVER / RESET ──────────────────────────────────
+  // ── GAME OVER / RESET ──────────────────────────────────
   void _gameOver() {
     gameOver = true;
     circles.forEach((c) => c.setRed());
@@ -171,7 +190,7 @@ class FourCircleGame extends FlameGame with TapDetector {
       anchor: Anchor.center,
       position: size / 2,
       textRenderer:
-          TextPaint(style: const TextStyle(fontSize: 32, color: Colors.white)),
+          TextPaint(style: const TextStyle(fontSize: 30, color: Colors.white)),
     ));
   }
 
