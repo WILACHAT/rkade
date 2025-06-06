@@ -7,6 +7,8 @@ import 'package:flame/game.dart';
 import 'package:flame/timer.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+
 
 class TapCircle extends CircleComponent {
   bool isGreen = false;
@@ -32,10 +34,10 @@ class TapCircle extends CircleComponent {
 
 class FourCircleGame extends FlameGame with TapDetector {
   // ── CONFIG ──────────────────────────────────────────────
-  static const double r      = 26;
+  static const double r      = 32;
   static const double hGap   = 26;
   static const double vGap   = 30;
-  static const spawnPeriod   = 1.4;
+  static const spawnPeriod   = 0.6;
   static const greenLifetime = 1.0;
   static const _hsKey        = 'high_four_circle';
 
@@ -75,13 +77,15 @@ class FourCircleGame extends FlameGame with TapDetector {
   // ── BUILD 24 CIRCLES (6 × 4) ────────────────────────────
   void _buildCircles() {
     final Vector2 centre = size / 2;
-    const rows = 6;
+    const rows = 4;
     const cols = 4;
 
     final colOffsets =
         List<double>.generate(cols, (i) => (i - 1.5) * (2 * r + hGap));
-    final rowOffsets =
-        List<double>.generate(rows, (j) => (j - 2.5) * (2 * r + vGap));
+final rowOffsets = List<double>.generate(
+  rows,
+  (j) => (j - 2.5) * (2 * r + vGap) + 140, // 👈 shift down by 40 pixels
+);
 
     circles = [];
     for (final y in rowOffsets) {
@@ -112,38 +116,45 @@ class FourCircleGame extends FlameGame with TapDetector {
   }
 
   // ── SPAWNER (now obeys currentMaxGreens) ────────────────
-  void _startSpawner() {
-    spawnTimer = TimerComponent(
-      period: spawnPeriod,
-      repeat: true,
-      onTick: () {
-        if (gameOver) return;
+// ── SPAWNER (now obeys currentMaxGreens and deducts points) ─────────────
+void _startSpawner() {
+  spawnTimer = TimerComponent(
+    period: spawnPeriod,
+    repeat: true,
+    onTick: () {
+      if (gameOver) return;
 
-        // How many greens are currently visible?
-        final activeGreens =
-            circles.where((c) => c.isGreen).length;
+      // # of greens visible right now
+      final activeGreens = circles.where((c) => c.isGreen).length;
+      if (activeGreens >= currentMaxGreens) return;
 
-        if (activeGreens >= currentMaxGreens) return;
+      // pick a red circle
+      final redChoices = circles.where((c) => !c.isGreen).toList();
+      if (redChoices.isEmpty) return;
 
-        // Pick a red circle and turn it green
-        final redChoices = circles.where((c) => !c.isGreen).toList();
-        if (redChoices.isEmpty) return;
+      final chosen = redChoices[rng.nextInt(redChoices.length)];
+      chosen.setGreen();
 
-        final chosen = redChoices[rng.nextInt(redChoices.length)];
-        chosen.setGreen();
+      // schedule it to revert to red – and DEDUCT a point if missed
+      add(TimerComponent(
+        period: greenLifetime,
+        removeOnFinish: true,
+        onTick: () {
+          if (!gameOver && chosen.isGreen) {
+            chosen.setRed();
+            // ↓↓↓ deduct a point, but never go below 0
+            if (score > 0) {
+              score--;
+              scoreLabel.text = 'Score: $score';
+            }
+          }
+        },
+      ));
+    },
+  );
+  add(spawnTimer);
+}
 
-        // Schedule it to revert to red
-        add(TimerComponent(
-          period: greenLifetime,
-          removeOnFinish: true,
-          onTick: () {
-            if (!gameOver && chosen.isGreen) chosen.setRed();
-          },
-        ));
-      },
-    );
-    add(spawnTimer);
-  }
 
   // ── INPUT ───────────────────────────────────────────────
   @override
@@ -164,6 +175,7 @@ class FourCircleGame extends FlameGame with TapDetector {
           c.setRed();
           score++;
           scoreLabel.text = 'Score: $score';
+          HapticFeedback.lightImpact();
 
           if (score > highScore) {
             highScore = score;
@@ -172,6 +184,8 @@ class FourCircleGame extends FlameGame with TapDetector {
                 .then((p) => p.setInt(_hsKey, highScore));
           }
         } else {
+            HapticFeedback.vibrate();
+
           _gameOver();
         }
         break;
