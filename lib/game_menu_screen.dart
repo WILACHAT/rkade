@@ -31,7 +31,7 @@ class GameMenuScreen extends StatelessWidget {
                 _buildGameCard(
                   context,
                   title: 'Circle Tap',
-                  screen: const GameScreenFourCircle(),
+                  screen: const GameScreenMiniCircle(),
                 ),
                 _buildGameCard(
                   context,
